@@ -1,0 +1,15 @@
+*📆 I dag*
+{% if calendar.today %}
+{% for ev in calendar.today %}• {{ ev.time }}  {{ ev.title }}
+{% endfor %}
+{% else %}
+Ingen avtaler i dag.
+{% endif %}
+
+*📆 I morgen*
+{% if calendar.tomorrow %}
+{% for ev in calendar.tomorrow %}• {{ ev.time }}  {{ ev.title }}
+{% endfor %}
+{% else %}
+Ingen avtaler i morgen.
+{% endif %}

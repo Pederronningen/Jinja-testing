@@ -282,8 +282,49 @@ Svar med KUN dette JSON-objektet, ingen annen tekst:
     return json.loads(raw)
 
 
-def send_to_slack(text):
-    payload = {"blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": text}}]}
+def _render(env, template_name, **kwargs):
+    return env.get_template(template_name).render(**kwargs).strip()
+
+
+def _section(text):
+    return {"type": "section", "text": {"type": "mrkdwn", "text": text}}
+
+
+def build_slack_payload(today, email_count, analysis, calendar, weather):
+    env = Environment(
+        loader=FileSystemLoader("templates"),
+        autoescape=False,
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
+
+    blocks = [
+        {"type": "header", "text": {"type": "plain_text", "text": f"📅 Daglig digest — {today}"}},
+        _section(_render(env, "weather.j2", weather=weather)),
+        {"type": "divider"},
+    ]
+
+    if calendar is not None:
+        blocks += [
+            _section(_render(env, "calendar.j2", calendar=calendar)),
+            {"type": "divider"},
+        ]
+    else:
+        blocks += [
+            _section("*📆 Kalender*\n_Sett GOOGLE_CALENDAR_ICS_URL i secrets for å se avtaler._"),
+            {"type": "divider"},
+        ]
+
+    blocks += [
+        _section(_render(env, "emails.j2", email_count=email_count, analysis=analysis)),
+        {"type": "divider"},
+        _section(_render(env, "news.j2", analysis=analysis)),
+    ]
+
+    return {"blocks": blocks}
+
+
+def send_to_slack(payload):
     resp = requests.post(SLACK_WEBHOOK_URL, json=payload, timeout=10)
     resp.raise_for_status()
     log.info("Slack-melding sendt.")
@@ -310,17 +351,8 @@ def main():
     except Exception as exc:
         log.warning("Kunne ikke hente vær: %s", exc)
 
-    env = Environment(loader=FileSystemLoader("templates"), autoescape=False)
-    template = env.get_template("digest.j2")
-    text = template.render(
-        today=today,
-        email_count=len(emails),
-        analysis=analysis,
-        calendar=calendar,
-        weather=weather,
-    )
-
-    send_to_slack(text)
+    payload = build_slack_payload(today, len(emails), analysis, calendar, weather)
+    send_to_slack(payload)
     log.info("Ferdig.")
 
 

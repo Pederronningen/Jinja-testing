@@ -1,0 +1,6 @@
+*🌤 Vær i Oslo*
+{% if weather %}
+{{ weather.temp_min }}–{{ weather.temp_max }}°C · {{ weather.condition }}{% if weather.precip > 0 %} · {{ weather.precip }} mm nedbør{% endif %}
+{% else %}
+_Kunne ikke hente værmelding._
+{% endif %}
