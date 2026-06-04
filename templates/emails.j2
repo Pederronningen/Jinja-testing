@@ -1,2 +1,2 @@
 *📧 E-post — {{ email_count }} ny{{ 'e' if email_count != 1 else '' }} melding{{ 'er' if email_count != 1 else '' }}*
-{{ analysis.email_summary }}
+{% if analysis.email_summary %}{{ analysis.email_summary }}{% else %}Ingen e-poster som krever oppfølging.{% endif %}

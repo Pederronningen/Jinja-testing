@@ -262,9 +262,11 @@ E-POSTER (siste 24 timer):
 NYHETER (siste 24 timer):
 {news_lines}
 
+Ignorer fullstendig: reklame, tilbud, nyhetsbrev, automatiske varsler, kvitteringer, markedsføring og annen masseutsendelse.
+
 Svar med KUN dette JSON-objektet, ingen annen tekst:
 {{
-  "email_summary": "<1-2 setninger som oppsummerer hva slags e-poster som kom inn>",
+  "email_summary": "<Nevn kun e-poster som krever oppfølging eller er personlig/viktig. Hvis det ikke er noen slike, svar med null>",
   "news_significant": <true kun hvis det har skjedd noe virkelig viktig: krig, terror, store naturkatastrofer, alvorlige politiske kriser — vanlige nyheter er false>,
   "news_summary": "<2-3 setninger om de viktigste nyhetene, eller null hvis news_significant er false>"
 }}"""
