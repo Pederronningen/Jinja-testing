@@ -1,0 +1,9 @@
+*📅 Daglig digest — {{ today }}*
+
+*📧 E-post — {{ email_count }} ny{{ 'e' if email_count != 1 else '' }} melding{{ 'er' if email_count != 1 else '' }}*
+{{ analysis.email_summary }}
+{% if analysis.news_significant %}
+
+*📰 Vesentlige nyheter*
+{{ analysis.news_summary }}
+{% endif %}
