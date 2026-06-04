@@ -18,10 +18,23 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-GMAIL_USER = os.environ["GMAIL_USER"]
-GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
 SLACK_WEBHOOK_URL = os.environ["SLACK_WEBHOOK_URL"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
+
+IMAP_ACCOUNTS = [
+    {
+        "label": "Gmail",
+        "user": os.environ["GMAIL_USER"],
+        "password": os.environ["GMAIL_APP_PASSWORD"],
+        "host": "imap.gmail.com",
+    },
+    {
+        "label": "Jobb",
+        "user": os.environ["DITTUTSTYR_USER"],
+        "password": os.environ["DITTUTSTYR_APP_PASSWORD"],
+        "host": "imap.gmail.com",
+    },
+]
 
 RSS_FEEDS = {
     "NRK": "https://www.nrk.no/toppsaker.rss",
@@ -42,16 +55,16 @@ def _decode_str(value, encoding=None):
     return value or ""
 
 
-def fetch_emails():
-    log.info("Kobler til Gmail IMAP…")
-    mail = imaplib.IMAP4_SSL("imap.gmail.com")
+def _fetch_emails_from_account(account):
+    log.info("Kobler til %s (%s)…", account["label"], account["host"])
+    mail = imaplib.IMAP4_SSL(account["host"])
     try:
-        mail.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        mail.login(account["user"], account["password"])
         mail.select("INBOX")
         since = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
         _, nums = mail.search(None, f"SINCE {since}")
         num_list = nums[0].split()
-        log.info("Fant %d e-poster siden %s", len(num_list), since)
+        log.info("%s: fant %d e-poster siden %s", account["label"], len(num_list), since)
 
         emails = []
         for num in num_list:
@@ -68,7 +81,7 @@ def fetch_emails():
                 _decode_str(part, enc) for part, enc in decode_header(raw_from)
             ).strip()
 
-            emails.append({"subject": subject, "sender": sender})
+            emails.append({"account": account["label"], "subject": subject, "sender": sender})
 
         return emails
     finally:
@@ -76,6 +89,16 @@ def fetch_emails():
             mail.logout()
         except Exception:
             pass
+
+
+def fetch_emails():
+    all_emails = []
+    for account in IMAP_ACCOUNTS:
+        try:
+            all_emails.extend(_fetch_emails_from_account(account))
+        except Exception as exc:
+            log.warning("Kunne ikke hente e-post fra %s: %s", account["label"], exc)
+    return all_emails
 
 
 def fetch_news():
@@ -109,7 +132,10 @@ def analyze_with_claude(emails, news_articles):
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
     email_lines = (
-        "\n".join(f"- Fra: {e['sender']} | Emne: {e['subject']}" for e in emails[:50])
+        "\n".join(
+            f"- [{e['account']}] Fra: {e['sender']} | Emne: {e['subject']}"
+            for e in emails[:50]
+        )
         if emails else "Ingen nye e-poster"
     )
     news_lines = (

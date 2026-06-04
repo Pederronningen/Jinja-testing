@@ -24,5 +24,7 @@ jobs:
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          DITTUTSTYR_USER: ${{ secrets.DITTUTSTYR_USER }}
+          DITTUTSTYR_APP_PASSWORD: ${{ secrets.DITTUTSTYR_APP_PASSWORD }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
