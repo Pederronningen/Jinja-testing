@@ -3,8 +3,12 @@ import os
 import imaplib
 import email
 from email.header import decode_header
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, date as date_type
 import time
+from collections import Counter
+from zoneinfo import ZoneInfo
+import icalendar
+import recurring_ical_events
 import feedparser
 import requests
 import anthropic
@@ -20,6 +24,7 @@ log = logging.getLogger(__name__)
 
 SLACK_WEBHOOK_URL = os.environ["SLACK_WEBHOOK_URL"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
+GOOGLE_CALENDAR_ICS_URL = os.environ.get("GOOGLE_CALENDAR_ICS_URL")
 
 IMAP_ACCOUNTS = [
     {
@@ -42,11 +47,35 @@ RSS_FEEDS = {
     "Aftenposten": "https://www.aftenposten.no/rss/feed/forsiden/",
 }
 
+OSLO_TZ = ZoneInfo("Europe/Oslo")
+
 NORSK_DAGER = ["mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag"]
 NORSK_MND = [
     "januar", "februar", "mars", "april", "mai", "juni",
     "juli", "august", "september", "oktober", "november", "desember",
 ]
+
+WEATHER_SYMBOLS = {
+    "clearsky": "Klart",
+    "fair": "Lettskyet",
+    "partlycloudy": "Delvis skyet",
+    "cloudy": "Overskyet",
+    "fog": "Tåke",
+    "lightrain": "Lett regn",
+    "rain": "Regn",
+    "heavyrain": "Kraftig regn",
+    "lightrainshowers": "Regnbyger",
+    "rainshowers": "Regnbyger",
+    "heavyrainshowers": "Kraftige regnbyger",
+    "lightsleet": "Lett sludd",
+    "sleet": "Sludd",
+    "sleetshowers": "Sluddbyger",
+    "lightsnow": "Lett snø",
+    "snow": "Snø",
+    "heavysnow": "Kraftig snø",
+    "snowshowers": "Snøbyger",
+    "thunder": "Torden",
+}
 
 
 def _decode_str(value, encoding=None):
@@ -103,7 +132,7 @@ def fetch_emails():
 
 def fetch_news():
     log.info("Henter RSS-nyheter…")
-    cutoff = time.gmtime((datetime.now(timezone.utc) - timedelta(hours=24)).timestamp())
+    cutoff = time.gmtime((datetime.now().astimezone(OSLO_TZ) - timedelta(hours=24)).timestamp())
     articles = []
 
     for source, url in RSS_FEEDS.items():
@@ -125,6 +154,85 @@ def fetch_news():
             log.warning("Kunne ikke hente %s: %s", source, exc)
 
     return articles
+
+
+def fetch_calendar(ics_url):
+    log.info("Henter kalender…")
+    resp = requests.get(
+        ics_url,
+        headers={"User-Agent": "DagligDigest/1.0"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    cal = icalendar.Calendar.from_ical(resp.content)
+
+    today = datetime.now(OSLO_TZ).date()
+    tomorrow = today + timedelta(days=1)
+
+    def parse_day(d):
+        events = recurring_ical_events.of(cal).at(d)
+        result = []
+
+        def sort_key(ev):
+            dt = ev.get("DTSTART").dt
+            if isinstance(dt, datetime):
+                return dt.astimezone(OSLO_TZ)
+            return datetime(dt.year, dt.month, dt.day, tzinfo=OSLO_TZ)
+
+        for ev in sorted(events, key=sort_key):
+            start = ev.get("DTSTART").dt
+            end_raw = ev.get("DTEND")
+            summary = str(ev.get("SUMMARY", "")).strip()
+
+            if isinstance(start, date_type) and not isinstance(start, datetime):
+                result.append({"time": "Heldag", "title": summary})
+            else:
+                start = start.astimezone(OSLO_TZ)
+                time_str = start.strftime("%H:%M")
+                if end_raw:
+                    end = end_raw.dt
+                    if isinstance(end, datetime):
+                        time_str += f"–{end.astimezone(OSLO_TZ).strftime('%H:%M')}"
+                result.append({"time": time_str, "title": summary})
+
+        return result
+
+    return {"today": parse_day(today), "tomorrow": parse_day(tomorrow)}
+
+
+def fetch_weather():
+    log.info("Henter vær for Oslo…")
+    resp = requests.get(
+        "https://api.met.no/weatherapi/locationforecast/2.0/compact",
+        params={"lat": 59.9139, "lon": 10.7522},
+        headers={"User-Agent": "DagligDigest/1.0 github.com/Pederronningen/Jinja-testing"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    today = datetime.now(OSLO_TZ).date()
+    temps, precip, symbols = [], 0.0, []
+
+    for ts in data["properties"]["timeseries"]:
+        t = datetime.fromisoformat(ts["time"].replace("Z", "+00:00")).astimezone(OSLO_TZ)
+        if t.date() != today:
+            continue
+        temps.append(ts["data"]["instant"]["details"]["air_temperature"])
+        if "next_1_hours" in ts["data"]:
+            symbols.append(ts["data"]["next_1_hours"]["summary"]["symbol_code"])
+            precip += ts["data"]["next_1_hours"]["details"].get("precipitation_amount", 0.0)
+
+    if not temps:
+        return None
+
+    dominant_code = Counter(s.split("_")[0] for s in symbols).most_common(1)[0][0] if symbols else ""
+    return {
+        "temp_min": round(min(temps)),
+        "temp_max": round(max(temps)),
+        "condition": WEATHER_SYMBOLS.get(dominant_code, dominant_code.capitalize()),
+        "precip": round(precip, 1),
+    }
 
 
 def analyze_with_claude(emails, news_articles):
@@ -182,16 +290,35 @@ def send_to_slack(text):
 
 
 def main():
-    now = datetime.now()
+    now = datetime.now(OSLO_TZ)
     today = f"{NORSK_DAGER[now.weekday()]} {now.day}. {NORSK_MND[now.month - 1]} {now.year}"
 
     emails = fetch_emails()
     news = fetch_news()
     analysis = analyze_with_claude(emails, news)
 
+    calendar = None
+    if GOOGLE_CALENDAR_ICS_URL:
+        try:
+            calendar = fetch_calendar(GOOGLE_CALENDAR_ICS_URL)
+        except Exception as exc:
+            log.warning("Kunne ikke hente kalender: %s", exc)
+
+    weather = None
+    try:
+        weather = fetch_weather()
+    except Exception as exc:
+        log.warning("Kunne ikke hente vær: %s", exc)
+
     env = Environment(loader=FileSystemLoader("templates"), autoescape=False)
     template = env.get_template("digest.j2")
-    text = template.render(today=today, email_count=len(emails), analysis=analysis)
+    text = template.render(
+        today=today,
+        email_count=len(emails),
+        analysis=analysis,
+        calendar=calendar,
+        weather=weather,
+    )
 
     send_to_slack(text)
     log.info("Ferdig.")

@@ -1,6 +1,30 @@
 *📅 Daglig digest — {{ today }}*
 
+{% if weather %}
+*🌤 Vær i Oslo*
+{{ weather.temp_min }}–{{ weather.temp_max }}°C · {{ weather.condition }}{% if weather.precip > 0 %} · {{ weather.precip }} mm nedbør{% endif %}
+
+{% endif %}
+{% if calendar %}
+*📆 I dag*
+{% if calendar.today %}
+{% for ev in calendar.today %}• {{ ev.time }}  {{ ev.title }}
+{% endfor %}
+{% else %}
+Ingen avtaler i dag.
+{% endif %}
+
+*📆 I morgen*
+{% if calendar.tomorrow %}
+{% for ev in calendar.tomorrow %}• {{ ev.time }}  {{ ev.title }}
+{% endfor %}
+{% else %}
+Ingen avtaler i morgen.
+{% endif %}
+
+{% endif %}
 *📧 E-post — {{ email_count }} ny{{ 'e' if email_count != 1 else '' }} melding{{ 'er' if email_count != 1 else '' }}*
 {{ analysis.email_summary }}
+
 *📰 Nyheter*
 {% if analysis.news_significant %}{{ analysis.news_summary }}{% else %}Ingen vesentlige nyheter i dag.{% endif %}

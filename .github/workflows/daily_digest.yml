@@ -26,5 +26,6 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           DITTUTSTYR_USER: ${{ secrets.DITTUTSTYR_USER }}
           DITTUTSTYR_APP_PASSWORD: ${{ secrets.DITTUTSTYR_APP_PASSWORD }}
+          GOOGLE_CALENDAR_ICS_URL: ${{ secrets.GOOGLE_CALENDAR_ICS_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
