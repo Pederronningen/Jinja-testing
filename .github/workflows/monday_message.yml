@@ -1,0 +1,30 @@
+name: Mandagsmelding til kjæresten
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"   # Mandag 10:00 CEST / 09:00 CET
+  workflow_dispatch:
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Installer avhengigheter
+        run: pip install anthropic requests python-dotenv
+
+      - name: Send mandagsmelding
+        run: python monday_message.py
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
+          GIRLFRIEND_PHONE: ${{ secrets.GIRLFRIEND_PHONE }}
+          GIRLFRIEND_NAME: ${{ secrets.GIRLFRIEND_NAME }}
